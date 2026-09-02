@@ -1,0 +1,17 @@
+# Local PyInstaller build folders
+build/
+dist/
+
+# Local Inno Setup installer output folder
+Output/
+
+# Python cache & compiled bytecode
+__pycache__/
+*.pyc
+
+# OS-generated metadata files
+.DS_Store
+Thumbs.db
+
+# Optional: Ignore system-managed cache if generated locally
+cache.json

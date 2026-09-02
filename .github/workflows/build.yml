@@ -40,7 +40,7 @@ jobs:
           pyinstaller --noconfirm --onedir --windowed --icon="PokéAbilityRando.ico" --add-data "PokéAbilityRando.ico;." --add-data "PokéAbilityRando.png;." --add-data "PokéAbilityRando.icns;." PokéAbilityRando.py
           iscc PokéAbilityRando.iss
 
-      - - name: Build macOS App & DMG
+      - name: Build macOS App & DMG
         if: runner.os == 'macOS'
         run: |
           pyinstaller --noconfirm --onedir --windowed --icon="PokéAbilityRando.icns" --add-data "PokéAbilityRando.ico:." --add-data "PokéAbilityRando.png:." --add-data "PokéAbilityRando.icns:." PokéAbilityRando.py

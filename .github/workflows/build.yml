@@ -1,0 +1,77 @@
+name: Build Cross-Platform Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: Windows-Installer
+          - os: macos-latest
+            artifact_name: macOS-Installer
+          - os: ubuntu-latest
+            artifact_name: Linux-AppImage
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller customtkinter requests pillow
+
+      - name: Build Windows Executable & Installer
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --icon="PokéAbilityRando.ico" --add-data "PokéAbilityRando.ico;." --add-data "PokéAbilityRando.png;." --add-data "PokéAbilityRando.icns;." PokéAbilityRando.py
+          iscc PokéAbilityRando.iss
+
+      - name: Build macOS App & DMG
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --icon="PokéAbilityRando.icns" --add-data "PokéAbilityRando.ico:." --add-data "PokéAbilityRando.png:." --add-data "PokéAbilityRando.icns:." PokéAbilityRando.py
+          pip install create-dmg
+          mkdir -p output_mac
+          create-dmg --volname "PokéAbilityRando Installer" --window-size 500 300 --icon-size 100 --app-drop-link 360 105 "output_mac/PokéAbilityRando-macOS.dmg" "dist/PokéAbilityRando.app" || true
+
+      - name: Build Linux Executable
+        if: runner.os == 'Linux'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --add-data "PokéAbilityRando.ico:." --add-data "PokéAbilityRando.png:." --add-data "PokéAbilityRando.icns:." PokéAbilityRando.py
+          mkdir -p output_linux
+          tar -czvf output_linux/PokéAbilityRando-Linux.tar.gz -C dist PokéAbilityRando
+
+      - name: Upload Windows Artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokéAbilityRando-Windows
+          path: Output/PokéAbilityRando_Setup.exe
+
+      - name: Upload macOS Artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokéAbilityRando-macOS
+          path: output_mac/PokéAbilityRando-macOS.dmg
+
+      - name: Upload Linux Artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokéAbilityRando-Linux
+          path: output_linux/PokéAbilityRando-Linux.tar.gz

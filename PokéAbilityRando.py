@@ -11,7 +11,7 @@ import requests
 from PIL import Image, ImageTk
 
 APP_NAME = "PokéAbilityRando"
-CURRENT_VERSION = "v1.0.3"
+CURRENT_VERSION = "v1.0.4"
 
 # --- Path Helpers ---
 def get_app_install_dir() -> str:
@@ -452,11 +452,9 @@ class PokemonAbilityApp(ctk.CTk):
                         bat.write("taskkill /f /im PokéAbilityRando.exe > nul 2>&1\n")
                         bat.write("timeout /t 3 /nobreak > nul\n")
                         
-                        # Handle Inno Setup installer vs direct executable replacement safely
-                        bat.write(f'if /i "{temp_file:~-4}"==".tmp" (\n')
-                        bat.write(f'    move /y "{temp_file}" "{current_executable}"\n')
-                        bat.write(f'    start "" "{current_executable}"\n')
-                        bat.write(')\n')
+                        # Directly move the verified temp file over the current executable
+                        bat.write(f'move /y "{temp_file}" "{current_executable}"\n')
+                        bat.write(f'start "" "{current_executable}"\n')
                         bat.write('del "%~f0"\n')
                     subprocess.Popen([bat_path], shell=True)
                 else:

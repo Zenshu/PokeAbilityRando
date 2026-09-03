@@ -13,6 +13,9 @@ OutputBaseFilename=PokéAbilityRando_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+; Automatically close running instances during updates
+CloseApplications=yes
+CloseApplicationsFilter=*.exe
 
 [Files]
 ; Copy all compiled files from the PyInstaller output folder

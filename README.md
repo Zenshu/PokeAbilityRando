@@ -41,4 +41,4 @@ cd PokeAbilityRando
 pip install customtkinter requests pillow
 
 # Run the application
-python main.py
+python PokéAbilityRando.py

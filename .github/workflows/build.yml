@@ -62,6 +62,7 @@ jobs:
         with:
           name: PokéAbilityRando-Windows
           path: Output/PokéAbilityRando_Setup.exe
+          aggregation-level: file
 
       - name: Upload macOS Artifact
         if: runner.os == 'macOS'
@@ -86,11 +87,14 @@ jobs:
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+          merge-multiple: true
 
       - name: Create GitHub Release & Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            PokéAbilityRando-Windows/PokéAbilityRando_Setup.exe
-            PokéAbilityRando-macOS/PokéAbilityRando-macOS.dmg
-            PokéAbilityRando-Linux/PokéAbilityRando-Linux.tar.gz
+            downloaded-artifacts/PokéAbilityRando_Setup.exe
+            downloaded-artifacts/PokéAbilityRando-macOS.dmg
+            downloaded-artifacts/PokéAbilityRando-Linux.tar.gz

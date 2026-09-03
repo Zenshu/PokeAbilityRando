@@ -22,6 +22,12 @@ Source: "dist\PokéAbilityRando\*.*"; DestDir: "{app}"; Flags: ignoreversion rec
 Name: "{userprograms}\PokéAbilityRando"; Filename: "{app}\PokéAbilityRando.exe"; IconFilename: "{app}\PokéAbilityRando.exe"
 Name: "{userdesktop}\PokéAbilityRando"; Filename: "{app}\PokéAbilityRando.exe"; IconFilename: "{app}\PokéAbilityRando.exe"
 
+[UninstallDelete]
+; Clean up generated configuration files and empty installation directory on removal
+Type: files; Name: "{app}\blacklist.txt"
+Type: files; Name: "{app}\wildcards.txt"
+Type: dirifempty; Name: "{app}"
+
 [Run]
 ; Option to launch the application immediately after setup completes
 Filename: "{app}\PokéAbilityRando.exe"; Description: "{cm:LaunchProgram,PokéAbilityRando}"; Flags: nowait postinstall skipifsilent

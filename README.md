@@ -32,7 +32,7 @@ wildcards.txt: Add ability names line-by-line that should trigger wildcard repla
 Building from Source
 To run or build the project directly from Python:
 
-Bash
+
 # Clone the repository
 git clone https://github.com/Zenshu/PokeAbilityRando.git
 cd PokeAbilityRando

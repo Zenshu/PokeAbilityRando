@@ -168,7 +168,7 @@ class PokemonAbilityApp(ctk.CTk):
 
     def setup_ui(self):
         self.title_label = ctk.CTkLabel(
-            self, text="PokéAbilityRando", font=("Arial", 20, "bold")
+            self, text=f"PokéAbilityRando {CURRENT_VERSION}", font=("Arial", 20, "bold")
         )
         self.title_label.pack(pady=(15, 2))
 

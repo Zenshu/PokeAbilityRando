@@ -11,7 +11,7 @@ import requests
 from PIL import Image, ImageTk
 
 APP_NAME = "PokéAbilityRando"
-CURRENT_VERSION = "v1.0.2"
+CURRENT_VERSION = "v1.0.3"
 
 # --- Path Helpers ---
 def get_app_install_dir() -> str:
@@ -401,6 +401,7 @@ class PokemonAbilityApp(ctk.CTk):
             webbrowser.open("https://github.com/Zenshu/PokeAbilityRando/releases/latest")
 
     def download_and_apply_update(self, asset_url):
+        temp_file = None
         try:
             if getattr(sys, "frozen", False):
                 current_executable = sys.executable
@@ -447,23 +448,29 @@ class PokemonAbilityApp(ctk.CTk):
                     with open(bat_path, "w", encoding="utf-8") as bat:
                         bat.write("@echo off\n")
                         bat.write("chcp 65001 > nul\n")
-                        bat.write("timeout /t 2 /nobreak > nul\n")
-                        bat.write(f'move /y "{temp_file}" "{current_executable}"\n')
-                        bat.write(f'start "" "{current_executable}"\n')
+                        # Force-kill any lingering instances to clear file locks (Error 32 fix)
+                        bat.write("taskkill /f /im PokéAbilityRando.exe > nul 2>&1\n")
+                        bat.write("timeout /t 3 /nobreak > nul\n")
+                        
+                        # Handle Inno Setup installer vs direct executable replacement safely
+                        bat.write(f'if /i "{temp_file:~-4}"==".tmp" (\n')
+                        bat.write(f'    move /y "{temp_file}" "{current_executable}"\n')
+                        bat.write(f'    start "" "{current_executable}"\n')
+                        bat.write(')\n')
                         bat.write('del "%~f0"\n')
                     subprocess.Popen([bat_path], shell=True)
                 else:
-                        sh_path = os.path.join(install_dir, "update.sh")
-                        with open(sh_path, "w", encoding="utf-8") as sh:
-                            sh.write("#!/bin/bash\n")
-                            sh.write("sleep 2\n")
-                            sh.write(f'mv "{temp_file}" "{current_executable}"\n')
-                            sh.write(f'chmod +x "{current_executable}"\n')
-                            sh.write(f'xattr -d com.apple.quarantine "{current_executable}" 2>/dev/null\n')
-                            sh.write(f'"{current_executable}" &\n')
-                            sh.write(f'rm -- "$0"\n')
-                        os.chmod(sh_path, 0o755)
-                        subprocess.Popen(["sh", sh_path])
+                    sh_path = os.path.join(install_dir, "update.sh")
+                    with open(sh_path, "w", encoding="utf-8") as sh:
+                        sh.write("#!/bin/bash\n")
+                        sh.write("sleep 2\n")
+                        sh.write(f'mv "{temp_file}" "{current_executable}"\n')
+                        sh.write(f'chmod +x "{current_executable}"\n')
+                        sh.write(f'xattr -d com.apple.quarantine "{current_executable}" 2>/dev/null\n')
+                        sh.write(f'"{current_executable}" &\n')
+                        sh.write(f'rm -- "$0"\n')
+                    os.chmod(sh_path, 0o755)
+                    subprocess.Popen(["sh", sh_path])
 
                 self.after(0, sys.exit, 0)
             else:
@@ -471,7 +478,7 @@ class PokemonAbilityApp(ctk.CTk):
                 self.after(0, lambda: self.update_btn.configure(state="normal", text="Retry Download"))
                 self.after(0, self.progress_bar.pack_forget)
         except Exception as e:
-            if os.path.exists(temp_file):
+            if temp_file and os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
                 except Exception:

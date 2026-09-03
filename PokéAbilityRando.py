@@ -4,11 +4,14 @@ import random
 import sys
 import threading
 import time
+import subprocess
+import webbrowser
 import customtkinter as ctk
 import requests
 from PIL import Image, ImageTk
 
 APP_NAME = "PokéAbilityRando"
+CURRENT_VERSION = "v1.0.1"
 
 # --- Path Helpers ---
 def get_app_install_dir() -> str:
@@ -35,11 +38,8 @@ def get_user_cache_dir() -> str:
 
 
 # File Paths
-# Config text files live in the local app installation directory
 BLACKLIST_FILE = os.path.join(get_app_install_dir(), "blacklist.txt")
 WILDCARD_FILE = os.path.join(get_app_install_dir(), "wildcards.txt")
-
-# Cache sits safely in the OS user cache folder
 CACHE_FILE = os.path.join(get_user_cache_dir(), "cache.json")
 CACHE_EXPIRY_DAYS = 30
 
@@ -89,10 +89,13 @@ def load_list_from_file(filepath: str) -> set:
 
 
 def append_to_file(filepath: str, ability_name: str):
-    """Appends a new ability name to the specified text file."""
+    """Appends a new ability name to the specified text file cleanly."""
     ensure_text_file_exists(filepath)
-    with open(filepath, "a", encoding="utf-8") as f:
-        f.write(f"\n{ability_name}")
+    with open(filepath, "r+", encoding="utf-8") as f:
+        content = f.read()
+        if content and not content.endswith("\n"):
+            f.write("\n")
+        f.write(f"{ability_name}\n")
 
 
 class PokemonAbilityApp(ctk.CTk):
@@ -100,22 +103,23 @@ class PokemonAbilityApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Custom Taskbar/Title Bar Text
         self.title("PokéAbilityRando")
-        self.geometry("580x740")
+        self.geometry("580x780")
 
-        # Load Icon cross-platform (ICO for Win, PNG for Mac/Linux)
         self.load_app_icon()
 
         self.all_abilities = []
         self.ability_cache = {}
+        self.latest_asset_url = None
 
-        # Ensure configuration text files exist right on startup
         ensure_text_file_exists(BLACKLIST_FILE)
         ensure_text_file_exists(WILDCARD_FILE)
 
         self.setup_ui()
         threading.Thread(target=self.load_ability_list, daemon=True).start()
+        
+        # Check updates silently in the background on startup
+        threading.Thread(target=self.check_for_updates, args=(False,), daemon=True).start()
 
     def load_app_icon(self):
         """Cross-platform app icon handler with garbage collection protection."""
@@ -146,14 +150,23 @@ class PokemonAbilityApp(ctk.CTk):
                 self.iconbitmap(ico_path)
             elif png_path:
                 img = Image.open(png_path)
-                # Store persistent reference on self._icon_photo to avoid GC cleanup
                 self._icon_photo = ImageTk.PhotoImage(img)
                 self.wm_iconphoto(True, self._icon_photo)
         except Exception as e:
             print(f"Icon loading error: {e}")
 
+    def fetch_max_generation(self) -> int:
+        """Dynamically fetches the latest generation count from PokéAPI to support future gens."""
+        try:
+            response = requests.get("https://pokeapi.co/api/v2/generation/", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("count", 9)
+        except Exception:
+            pass
+        return 9  # Fallback ceiling if offline
+
     def setup_ui(self):
-        # Header Text
         self.title_label = ctk.CTkLabel(
             self, text="PokéAbilityRando", font=("Arial", 20, "bold")
         )
@@ -164,7 +177,10 @@ class PokemonAbilityApp(ctk.CTk):
         )
         self.status_label.pack(pady=(0, 10))
 
-        # Top Control Panel
+        # Progress bar initialized but hidden by default
+        self.progress_bar = ctk.CTkProgressBar(self, width=400)
+        self.progress_bar.set(0)
+
         input_frame = ctk.CTkFrame(self)
         input_frame.pack(padx=20, pady=5, fill="x")
 
@@ -188,20 +204,13 @@ class PokemonAbilityApp(ctk.CTk):
         ctk.CTkLabel(input_frame, text="Gen:").grid(
             row=1, column=0, padx=(10, 5), pady=8, sticky="w"
         )
+        
+        max_gen = self.fetch_max_generation()
+        gen_values = ["All Gens"] + [f"Gen {i}" for i in range(3, max_gen + 1)]
+
         self.gen_option = ctk.CTkOptionMenu(
             input_frame,
-            values=[
-                "All Gens",
-                "Gen 1",
-                "Gen 2",
-                "Gen 3",
-                "Gen 4",
-                "Gen 5",
-                "Gen 6",
-                "Gen 7",
-                "Gen 8",
-                "Gen 9",
-            ],
+            values=gen_values,
             width=110,
         )
         self.gen_option.set("All Gens")
@@ -217,13 +226,23 @@ class PokemonAbilityApp(ctk.CTk):
         )
         self.update_cache_btn.grid(row=1, column=2, padx=10, pady=8, sticky="e")
 
-        # Row 2: Singles-Only Toggle Switch
+        # Row 2: Singles-Only Toggle Switch & Check Updates Button
         self.singles_switch = ctk.CTkSwitch(
             input_frame, text="Ignore Doubles-Only"
         )
         self.singles_switch.grid(
-            row=2, column=0, columnspan=3, padx=10, pady=8, sticky="w"
+            row=2, column=0, columnspan=2, padx=10, pady=8, sticky="w"
         )
+
+        self.update_btn = ctk.CTkButton(
+            input_frame,
+            text="Check Updates",
+            width=120,
+            fg_color="#4A5568",
+            hover_color="#2D3748",
+            command=self.run_update_check,
+        )
+        self.update_btn.grid(row=2, column=2, padx=10, pady=8, sticky="e")
 
         # Row 3: Status File Info Text
         self.file_info_label = ctk.CTkLabel(
@@ -248,12 +267,11 @@ class PokemonAbilityApp(ctk.CTk):
 
         # Scrollable Frame for Result Cards
         self.results_frame = ctk.CTkScrollableFrame(
-            self, width=530, height=420
+            self, width=530, height=380
         )
         self.results_frame.pack(padx=20, pady=(5, 20), fill="both", expand=True)
 
     def load_ability_list(self, force_refresh: bool = False):
-        """Loads from OS cache directory or fetches from PokéAPI if expired/missing/forced."""
         if os.path.exists(CACHE_FILE) and not force_refresh:
             try:
                 file_age_days = (time.time() - os.path.getmtime(CACHE_FILE)) / (
@@ -290,7 +308,8 @@ class PokemonAbilityApp(ctk.CTk):
 
         try:
             results = []
-            for gen_num in range(1, 11):
+            max_gen = self.fetch_max_generation()
+            for gen_num in range(3, max_gen + 1):
                 url = f"https://pokeapi.co/api/v2/generation/{gen_num}/"
                 response = requests.get(url, timeout=5)
                 if response.status_code == 200:
@@ -326,6 +345,145 @@ class PokemonAbilityApp(ctk.CTk):
                 ),
             )
 
+    def check_for_updates(self, manual=True):
+        try:
+            url = "https://api.github.com/repos/Zenshu/PokeAbilityRando/releases/latest"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                latest_tag = data.get("tag_name")
+                
+                if latest_tag and latest_tag != CURRENT_VERSION:
+                    asset_url = None
+                    for asset in data.get("assets", []):
+                        name = asset["name"].lower()
+                        if sys.platform == "win32" and name.endswith(".exe"):
+                            asset_url = asset["browser_download_url"]
+                            break
+                        elif sys.platform == "darwin" and ("mac" in name or "darwin" in name or name.endswith(".zip")):
+                            asset_url = asset["browser_download_url"]
+                            break
+                        elif sys.platform == "linux" and ("linux" in name or "appimage" in name or not "." in name):
+                            asset_url = asset["browser_download_url"]
+                            break
+
+                    if not asset_url and data.get("assets"):
+                        asset_url = data["assets"][0]["browser_download_url"]
+
+                    self.latest_asset_url = asset_url
+
+                    self.after(0, lambda: self.status_label.configure(text=f"New version {latest_tag} available!", text_color="green"))
+                    self.after(0, lambda: self.update_btn.configure(
+                        text=f"Download {latest_tag}",
+                        fg_color="#2B5B84",
+                        hover_color="#1E3F5B",
+                        command=self.trigger_download
+                    ))
+                elif manual:
+                    self.after(0, lambda: self.status_label.configure(text="You are running the latest version.", text_color="gray"))
+            elif manual:
+                self.after(0, lambda: self.status_label.configure(text="No releases found on GitHub.", text_color="red"))
+        except Exception:
+            if manual:
+                self.after(0, lambda: self.status_label.configure(text="Could not reach GitHub for updates.", text_color="red"))
+
+    def trigger_download(self):
+        """Called when the user explicitly clicks the dynamic download button."""
+        if self.latest_asset_url:
+            self.update_btn.configure(state="disabled", text="Downloading...")
+            self.status_label.configure(text="Downloading update package...", text_color="blue")
+            
+            # Reveal progress bar right above the generate button only when downloading
+            self.progress_bar.pack(pady=(0, 10), before=self.generate_btn)
+            
+            threading.Thread(target=self.download_and_apply_update, args=(self.latest_asset_url,), daemon=True).start()
+        else:
+            webbrowser.open("https://github.com/Zenshu/PokeAbilityRando/releases/latest")
+
+    def download_and_apply_update(self, asset_url):
+        try:
+            if getattr(sys, "frozen", False):
+                current_executable = sys.executable
+            else:
+                ext = ".exe" if sys.platform == "win32" else ""
+                current_executable = os.path.join(get_app_install_dir(), f"PokéAbilityRando{ext}")
+
+            temp_file = current_executable + ".tmp"
+
+            response = requests.get(asset_url, stream=True, timeout=30)
+            if response.status_code == 200:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded_size = 0
+
+                with open(temp_file, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded_size += len(chunk)
+                            if total_size > 0:
+                                progress = downloaded_size / total_size
+                                percent = int(progress * 100)
+                                self.after(0, lambda p=progress, pct=percent: [
+                                    self.progress_bar.set(p),
+                                    self.status_label.configure(text=f"Downloading update... {pct}%")
+                                ])
+                            else:
+                                kb_downloaded = downloaded_size // 1024
+                                self.after(0, lambda kb=kb_downloaded: self.status_label.configure(text=f"Downloading... {kb} KB"))
+
+                # Validate downloaded file (must be at least 100KB and not an HTML response)
+                if os.path.exists(temp_file) and os.path.getsize(temp_file) > 100 * 1024:
+                    with open(temp_file, "rb") as check_f:
+                        header = check_f.read(10)
+                        if b"<!DOCTYPE" in header or b"<html" in header:
+                            raise Exception("Downloaded file is an HTML page instead of an executable.")
+                else:
+                    raise Exception("Downloaded file is too small or invalid.")
+
+                install_dir = get_app_install_dir()
+
+                if sys.platform == "win32":
+                    bat_path = os.path.join(install_dir, "update.bat")
+                    with open(bat_path, "w", encoding="utf-8") as bat:
+                        bat.write("@echo off\n")
+                        bat.write("chcp 65001 > nul\n")
+                        bat.write("timeout /t 2 /nobreak > nul\n")
+                        bat.write(f'move /y "{temp_file}" "{current_executable}"\n')
+                        bat.write(f'start "" "{current_executable}"\n')
+                        bat.write('del "%~f0"\n')
+                    subprocess.Popen([bat_path], shell=True)
+                else:
+                        sh_path = os.path.join(install_dir, "update.sh")
+                        with open(sh_path, "w", encoding="utf-8") as sh:
+                            sh.write("#!/bin/bash\n")
+                            sh.write("sleep 2\n")
+                            sh.write(f'mv "{temp_file}" "{current_executable}"\n')
+                            sh.write(f'chmod +x "{current_executable}"\n')
+                            sh.write(f'xattr -d com.apple.quarantine "{current_executable}" 2>/dev/null\n')
+                            sh.write(f'"{current_executable}" &\n')
+                            sh.write(f'rm -- "$0"\n')
+                        os.chmod(sh_path, 0o755)
+                        subprocess.Popen(["sh", sh_path])
+
+                self.after(0, sys.exit, 0)
+            else:
+                self.after(0, lambda: self.status_label.configure(text="Failed to download update file.", text_color="red"))
+                self.after(0, lambda: self.update_btn.configure(state="normal", text="Retry Download"))
+                self.after(0, self.progress_bar.pack_forget)
+        except Exception as e:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+            self.after(0, lambda err=str(e): self.status_label.configure(text=f"Update error: {err}", text_color="red"))
+            self.after(0, lambda: self.update_btn.configure(state="normal", text="Retry Download"))
+            self.after(0, self.progress_bar.pack_forget)
+
+    def run_update_check(self):
+        self.status_label.configure(text="Checking for updates...", text_color="blue")
+        threading.Thread(target=self.check_for_updates, args=(True,), daemon=True).start()
+
     def on_click_update_cache(self):
         self.generate_btn.configure(state="disabled")
         threading.Thread(
@@ -335,7 +493,6 @@ class PokemonAbilityApp(ctk.CTk):
         ).start()
 
     def fetch_description(self, url: str) -> str:
-        """Fetches the latest in-game description (flavor text) from PokéAPI."""
         if url in self.ability_cache:
             return self.ability_cache[url]
 

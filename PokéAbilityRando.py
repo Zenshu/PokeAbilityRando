@@ -11,7 +11,7 @@ import requests
 from PIL import Image, ImageTk
 
 APP_NAME = "PokéAbilityRando"
-CURRENT_VERSION = "v1.0.1"
+CURRENT_VERSION = "v1.0.2"
 
 # --- Path Helpers ---
 def get_app_install_dir() -> str:

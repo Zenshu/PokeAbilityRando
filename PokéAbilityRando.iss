@@ -1,6 +1,6 @@
 [Setup]
 AppName=PokéAbilityRando
-AppVersion=1.0
+AppVersion=1.0.5
 AppPublisher=Zenshu
 DefaultDirName={userappdata}\Programs\PokéAbilityRando
 DefaultGroupName=PokéAbilityRando
